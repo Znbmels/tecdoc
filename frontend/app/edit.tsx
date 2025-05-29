@@ -7,24 +7,48 @@ import Header from "../components/Header";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 
+// Интерфейсы для типизации
+interface Collaborator {
+  id: number;
+  user: string;
+  role: string;
+}
+
+interface DocumentData {
+  title: string;
+  content: string;
+  collaborators: Collaborator[];
+}
+
+// Вспомогательная функция для получения токена с учетом платформы
+const getToken = async () => {
+  if (Platform.OS === 'web') {
+    // Для веб используем localStorage
+    return localStorage.getItem('accessToken');
+  } else {
+    // Для нативных платформ используем SecureStore
+    return await SecureStore.getItemAsync('accessToken');
+  }
+};
+
 export default function EditDocument() {
   const { id } = useLocalSearchParams();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [collaborators, setCollaborators] = useState([]);
+  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
 
   useEffect(() => {
     const fetchDocument = async () => {
       try {
-        const token = await SecureStore.getItemAsync("token");
+        const token = await getToken();
         if (!token) {
           Alert.alert("Ошибка", "Не авторизован. Пожалуйста, войдите снова.");
-          router.push("/index");
+          router.push("/login");
           return;
         }
 
-        const response = await axios.get(`http://localhost:8000/api/documents/${id}/`, {
+        const response = await axios.get<DocumentData>(`http://127.0.0.1:8000/api/documents/${id}/`, {
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
@@ -33,8 +57,8 @@ export default function EditDocument() {
         console.log("Fetch document response:", response.data);
         setTitle(response.data.title);
         setContent(response.data.content);
-        setCollaborators(response.data.collaborators);
-      } catch (error) {
+        setCollaborators(response.data.collaborators || []);
+      } catch (error: any) {
         console.log("Fetch document error:", error.response?.data);
         Alert.alert("Ошибка", "Не удалось загрузить документ.");
       }
@@ -45,15 +69,15 @@ export default function EditDocument() {
 
   const handleSave = async () => {
     try {
-      const token = await SecureStore.getItemAsync("token");
+      const token = await getToken();
       if (!token) {
         Alert.alert("Ошибка", "Не авторизован. Пожалуйста, войдите снова.");
-        router.push("/index");
+        router.push("/login");
         return;
       }
 
       await axios.put(
-        `http://localhost:8000/api/documents/${id}/`,
+        `http://127.0.0.1:8000/api/documents/${id}/`,
         { title, content },
         {
           headers: {
@@ -65,7 +89,7 @@ export default function EditDocument() {
       console.log("Save document response:", { title, content });
       Alert.alert("Успех", "Документ сохранён!");
       router.push("/documents");
-    } catch (error) {
+    } catch (error: any) {
       console.log("Save document error:", error.response?.data);
       Alert.alert("Ошибка", "Не удалось сохранить документ.");
     }
@@ -73,32 +97,62 @@ export default function EditDocument() {
 
   const downloadDocument = async () => {
     try {
-      const fileName = `${title.replace(/[^a-zA-Z0-9]/g, "_")}.txt`;
-      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
-      const contentToSave = `Заголовок: ${title}\n\n${content}`;
-      await FileSystem.writeAsStringAsync(fileUri, contentToSave, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
+      if (Platform.OS === 'web') {
+        // Для веб-версии создаем скачиваемый файл через Blob
+        const fileName = `${title.replace(/[^a-zA-Z0-9]/g, "_")}.txt`;
+        const contentToSave = `Заголовок: ${title}\n\n${content}`;
+        
+        // Создаем Blob
+        const blob = new Blob([contentToSave], { type: 'text/plain' });
+        
+        // Создаем URL для скачивания
+        const url = URL.createObjectURL(blob);
+        
+        // Создаем невидимую ссылку для скачивания
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        
+        // Добавляем в DOM, запускаем скачивание и удаляем
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        // Освобождаем URL
+        URL.revokeObjectURL(url);
+        
+        console.log("Файл скачан:", fileName);
+      } else {
+        // Для нативных приложений используем стандартную логику с FileSystem
+        const fileName = `${title.replace(/[^a-zA-Z0-9]/g, "_")}.txt`;
+        const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+        const contentToSave = `Заголовок: ${title}\n\n${content}`;
+        await FileSystem.writeAsStringAsync(fileUri, contentToSave, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
 
-      const isAvailable = await Sharing.isAvailableAsync();
-      if (!isAvailable) {
-        Alert.alert("Ошибка", "Функция шаринга недоступна на этом устройстве.");
-        return;
+        const isAvailable = await Sharing.isAvailableAsync();
+        if (!isAvailable) {
+          Alert.alert("Ошибка", "Функция шаринга недоступна на этом устройстве.");
+          return;
+        }
+
+        await Sharing.shareAsync(fileUri, {
+          mimeType: "text/plain",
+          dialogTitle: "Сохранить или поделиться документом",
+        });
+
+        console.log("Файл сохранён по пути:", fileUri);
       }
-
-      await Sharing.shareAsync(fileUri, {
-        mimeType: "text/plain",
-        dialogTitle: "Сохранить или поделиться документом",
-      });
-
-      console.log("Файл сохранён по пути:", fileUri);
-    } catch (error) {
+      
+      Alert.alert("Успех", "Документ скачан!");
+    } catch (error: any) {
       console.log("Download error:", error);
       Alert.alert("Ошибка", "Не удалось скачать документ.");
     }
   };
 
-  const renderCollaborator = ({ item }) => (
+  const renderCollaborator = ({ item }: { item: Collaborator }) => (
     <View style={styles.collaboratorItem}>
       <Text style={styles.collaboratorText}>{item.user} ({item.role === "view" ? "Просмотр" : "Редактирование"})</Text>
     </View>

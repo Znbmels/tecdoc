@@ -1,9 +1,21 @@
-import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform } from "react-native";
 import { useState } from "react";
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 import { useLocalSearchParams, router } from "expo-router";
 import Header from "../components/Header";
+import { showAlert } from "../utils/alerts";
+
+// Вспомогательная функция для получения токена с учетом платформы
+const getToken = async () => {
+  if (Platform.OS === 'web') {
+    // Для веб-версии используем localStorage
+    return localStorage.getItem('accessToken');
+  } else {
+    // Для нативных платформ используем SecureStore
+    return await SecureStore.getItemAsync('accessToken');
+  }
+};
 
 export default function InviteCollaborator() {
   const { id } = useLocalSearchParams();
@@ -11,16 +23,25 @@ export default function InviteCollaborator() {
   const [role, setRole] = useState("view");
 
   const handleInvite = async () => {
+    // Проверяем валидность email
+    if (!email || !/\S+@\S+\.\S+/.test(email)) {
+      showAlert("Ошибка", "Пожалуйста, введите корректный email");
+      return;
+    }
+
     try {
-      const token = await SecureStore.getItemAsync("token");
+      const token = await getToken();
       if (!token) {
-        Alert.alert("Ошибка", "Не авторизован. Пожалуйста, войдите снова.");
-        router.push("/index");
+        showAlert("Ошибка", "Не авторизован. Пожалуйста, войдите снова.", () => {
+          router.push("/login");
+        });
         return;
       }
 
+      console.log(`Отправка запроса на приглашение коллаборатора: ${email}, роль: ${role}, для документа: ${id}`);
+      
       const response = await axios.post(
-        `http://localhost:8000/api/documents/${id}/collaborators/`,
+        `http://127.0.0.1:8000/api/documents/${id}/invite/`,
         { email, role },
         {
           headers: {
@@ -30,11 +51,43 @@ export default function InviteCollaborator() {
         }
       );
       console.log("Invite response:", response.data);
-      Alert.alert("Успех", "Коллаборатор приглашён!");
-      router.push({ pathname: "/edit", params: { id } });
-    } catch (error) {
-      console.log("Invite error:", error.response?.data);
-      Alert.alert("Ошибка", "Не удалось пригласить коллаборатора.");
+      showAlert("Успех", "Коллаборатор приглашён!", () => {
+        router.push({ pathname: "/edit", params: { id } });
+      });
+    } catch (error: any) {
+      console.error("Invite error:", error.response?.data || error.message);
+      
+      // Определяем конкретную ошибку на основе ответа сервера
+      let errorMessage = "Не удалось пригласить коллаборатора. Проверьте соединение.";
+      
+      if (error.response) {
+        const status = error.response.status;
+        const data = error.response.data;
+        
+        if (status === 404) {
+          if (data.error === "User not found") {
+            errorMessage = "Пользователь с таким email не найден в системе.";
+          } else if (data.error === "Document not found or you are not the owner") {
+            errorMessage = "Документ не найден или вы не являетесь его владельцем.";
+          }
+        } else if (status === 400) {
+          if (data.email) {
+            errorMessage = `Ошибка email: ${data.email}`;
+          } else if (data.role) {
+            errorMessage = `Ошибка роли: ${data.role}`;
+          } else if (data.error === "User is already a collaborator") {
+            errorMessage = "Этот пользователь уже является коллаборатором документа.";
+          }
+        } else if (status === 401) {
+          errorMessage = "Ваша сессия истекла. Пожалуйста, войдите снова.";
+          showAlert("Ошибка", errorMessage, () => {
+            router.push("/login");
+          });
+          return;
+        }
+      }
+      
+      showAlert("Ошибка", errorMessage);
     }
   };
 

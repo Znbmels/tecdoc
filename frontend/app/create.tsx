@@ -1,15 +1,33 @@
-import { View, Text, TextInput, TouchableOpacity, FlatList, Alert, StyleSheet } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, FlatList, Alert, StyleSheet, Platform } from "react-native";
 import { useState, useEffect } from "react";
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 import { router } from "expo-router";
 import Header from "../components/Header";
 
+// Интерфейс для задачи
+interface TodoItem {
+  id: number;
+  text: string;
+  completed: boolean;
+}
+
+// Вспомогательная функция для получения токена с учетом платформы
+const getToken = async () => {
+  if (Platform.OS === 'web') {
+    // Для веб используем localStorage
+    return localStorage.getItem('accessToken');
+  } else {
+    // Для нативных платформ используем SecureStore
+    return await SecureStore.getItemAsync('accessToken');
+  }
+};
+
 export default function CreateDocument() {
   const [title, setTitle] = useState("");
   const [mode, setMode] = useState("text"); // Режим: "text" или "todo"
   const [content, setContent] = useState(""); // Для обычного текста
-  const [todoItems, setTodoItems] = useState([{ id: Date.now(), text: "", completed: false }]);
+  const [todoItems, setTodoItems] = useState<TodoItem[]>([{ id: Date.now(), text: "", completed: false }]);
   const [category, setCategory] = useState("Работа"); // Значение по умолчанию
 
   // Добавление новой задачи
@@ -18,12 +36,12 @@ export default function CreateDocument() {
   };
 
   // Обновление текста задачи
-  const updateTodoText = (id, text) => {
+  const updateTodoText = (id: number, text: string) => {
     setTodoItems(todoItems.map((item) => (item.id === id ? { ...item, text } : item)));
   };
 
   // Переключение состояния чекбокса
-  const toggleTodoCompleted = (id) => {
+  const toggleTodoCompleted = (id: number) => {
     setTodoItems(todoItems.map((item) => (item.id === id ? { ...item, completed: !item.completed } : item)));
   };
 
@@ -44,15 +62,15 @@ export default function CreateDocument() {
     }
 
     try {
-      const token = await SecureStore.getItemAsync("token");
+      const token = await getToken();
       if (!token) {
         Alert.alert("Ошибка", "Не авторизован. Пожалуйста, войдите снова.");
-        router.push("/index");
+        router.push("/login");
         return;
       }
 
       await axios.post(
-        "http://localhost:8000/api/documents/",
+        "http://127.0.0.1:8000/api/documents/",
         { title, content },
         {
           headers: {
@@ -64,13 +82,13 @@ export default function CreateDocument() {
       console.log("Create document response:", { title, content });
       Alert.alert("Успех", "Документ создан!");
       router.push("/documents");
-    } catch (error) {
+    } catch (error: any) {
       console.log("Create document error:", error.response?.data);
       Alert.alert("Ошибка", "Не удалось создать документ.");
     }
   };
 
-  const renderTodoItem = ({ item }) => (
+  const renderTodoItem = ({ item }: { item: TodoItem }) => (
     <View style={styles.todoItem}>
       <TouchableOpacity onPress={() => toggleTodoCompleted(item.id)} style={styles.checkbox}>
         <Text style={styles.checkboxText}>{item.completed ? "✓" : "□"}</Text>

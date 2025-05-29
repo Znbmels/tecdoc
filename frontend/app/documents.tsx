@@ -1,68 +1,130 @@
-import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet } from "react-native";
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Platform } from "react-native";
 import { useState, useEffect } from "react";
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 import { router } from "expo-router";
 import Header from "../components/Header";
+import { showAlert, showConfirm } from "../utils/alerts";
+
+// Интерфейс для документа
+interface Document {
+  id: number;
+  title: string;
+  content: string;
+  collaborators: Collaborator[];
+}
+
+// Интерфейс для коллаборатора
+interface Collaborator {
+  id: number;
+  user: string;
+  role: string;
+}
+
+// Вспомогательная функция для получения токена с учетом платформы
+const getToken = async () => {
+  if (Platform.OS === 'web') {
+    // Для веб используем localStorage
+    return localStorage.getItem('accessToken');
+  } else {
+    // Для нативных платформ используем SecureStore
+    return await SecureStore.getItemAsync('accessToken');
+  }
+};
 
 export default function Documents() {
-  const [documents, setDocuments] = useState([]);
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchDocuments = async () => {
       try {
-        const token = await SecureStore.getItemAsync("token");
+        setLoading(true);
+        setError(null);
+        
+        const token = await getToken();
         if (!token) {
-          Alert.alert("Ошибка", "Не авторизован. Пожалуйста, войдите снова.");
-          router.push("/login");
+          setError("Не авторизован");
+          showAlert("Ошибка", "Не авторизован. Пожалуйста, войдите снова.", () => {
+            router.push("/login");
+          });
           return;
         }
 
-        const response = await axios.get("http://localhost:8000/api/documents/", {
+        console.log("Fetching documents with token:", token.substring(0, 10) + "...");
+        
+        const response = await axios.get<Document[]>("http://127.0.0.1:8000/api/documents/", {
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
         });
+        
         console.log("Fetch documents response:", response.data);
         setDocuments(response.data);
-      } catch (error) {
-        console.log("Fetch documents error:", error.response?.data);
-        Alert.alert("Ошибка", "Не удалось загрузить документы.");
+      } catch (error: any) {
+        console.error("Fetch documents error:", error.response?.data || error.message);
+        setError(error.response?.data?.detail || "Не удалось загрузить документы");
+        
+        // Проверяем, не устарел ли токен
+        if (error.response?.status === 401) {
+          showAlert("Ошибка", "Сессия истекла. Пожалуйста, войдите снова.", () => {
+            router.push("/login");
+          });
+        } else {
+          showAlert("Ошибка", "Не удалось загрузить документы. Проверьте соединение с сервером.");
+        }
+      } finally {
+        setLoading(false);
       }
     };
 
     fetchDocuments();
   }, []);
 
-  const handleDelete = async (id) => {
-    try {
-      const token = await SecureStore.getItemAsync("token");
-      if (!token) {
-        Alert.alert("Ошибка", "Не авторизован. Пожалуйста, войдите снова.");
-        router.push("/login");
-        return;
-      }
+  const handleDelete = async (id: number) => {
+    showConfirm(
+      "Подтверждение",
+      "Вы уверены, что хотите удалить этот документ?",
+      async () => {
+        try {
+          const token = await getToken();
+          if (!token) {
+            showAlert("Ошибка", "Не авторизован. Пожалуйста, войдите снова.", () => {
+              router.push("/login");
+            });
+            return;
+          }
 
-      await axios.delete(`http://localhost:8000/api/documents/${id}/`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-      setDocuments(documents.filter((doc) => doc.id !== id));
-      Alert.alert("Успех", "Документ удалён!");
-    } catch (error) {
-      console.log("Delete document error:", error.response?.data);
-      Alert.alert("Ошибка", "Не удалось удалить документ.");
-    }
+          await axios.delete(`http://127.0.0.1:8000/api/documents/${id}/`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          });
+          setDocuments(documents.filter((doc) => doc.id !== id));
+          showAlert("Успех", "Документ удалён!");
+        } catch (error: any) {
+          console.error("Delete document error:", error.response?.data || error.message);
+          showAlert("Ошибка", "Не удалось удалить документ.");
+        }
+      }
+    );
   };
 
-  const renderDocument = ({ item }) => (
+  const renderDocument = ({ item }: { item: Document }) => (
     <View style={styles.documentItem}>
       <TouchableOpacity onPress={() => router.push({ pathname: "/edit", params: { id: item.id } })}>
         <Text style={styles.documentTitle}>{item.title}</Text>
-        <Text style={styles.documentContent}>{item.content.slice(0, 50)}...</Text>
+        <Text style={styles.documentContent}>
+          {item.content.slice(0, 50)}{item.content.length > 50 ? "..." : ""}
+        </Text>
+        {item.collaborators && item.collaborators.length > 0 && (
+          <Text style={styles.collaboratorsInfo}>
+            Коллабораторов: {item.collaborators.length}
+          </Text>
+        )}
       </TouchableOpacity>
       <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(item.id)}>
         <Text style={styles.deleteButtonText}>Удалить</Text>
@@ -77,11 +139,19 @@ export default function Documents() {
       <TouchableOpacity style={styles.button} onPress={() => router.push("/create")}>
         <Text style={styles.buttonText}>Создать документ</Text>
       </TouchableOpacity>
+      
+      {loading && <Text style={styles.statusText}>Загрузка...</Text>}
+      {error && <Text style={styles.errorText}>{error}</Text>}
+      
       <FlatList
         data={documents}
         renderItem={renderDocument}
         keyExtractor={(item) => item.id.toString()}
-        ListEmptyComponent={<Text style={styles.emptyText}>Документов пока нет.</Text>}
+        ListEmptyComponent={
+          !loading && !error ? (
+            <Text style={styles.emptyText}>Документов пока нет.</Text>
+          ) : null
+        }
       />
     </View>
   );
@@ -125,6 +195,12 @@ const styles = StyleSheet.create({
   documentContent: {
     color: "#9CA3AF",
     fontSize: 14,
+    marginBottom: 4,
+  },
+  collaboratorsInfo: {
+    color: "#10B981",
+    fontSize: 12,
+    marginTop: 4,
   },
   deleteButton: {
     backgroundColor: "#EF4444",
@@ -141,5 +217,17 @@ const styles = StyleSheet.create({
     color: "#9CA3AF",
     fontSize: 14,
     textAlign: "center",
+  },
+  statusText: {
+    color: "#10B981",
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  errorText: {
+    color: "#EF4444",
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: 16,
   },
 });
