@@ -17,13 +17,26 @@ const getToken = async () => {
   }
 };
 
-export default function InviteCollaborator() {
-  const { id } = useLocalSearchParams();
+export default function ShareDocument() {
+  const params = useLocalSearchParams();
+  console.log('All params received:', params);
+  
+  // Попробуем получить documentId разными способами
+  let documentId = params.documentId || params.id;
+  if (Array.isArray(documentId)) {
+    documentId = documentId[0];
+  }
+  
+  console.log('Final documentId:', documentId);
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState("view");
 
-  const handleInvite = async () => {
-    // Проверяем валидность email
+  const handleShare = async () => {
+    console.log('Sharing document with ID:', documentId);
+    if (!documentId) {
+      showAlert("Ошибка", "ID документа не найден. Попробуйте снова.");
+      return;
+    }
+
     if (!email || !/\S+@\S+\.\S+/.test(email)) {
       showAlert("Ошибка", "Пожалуйста, введите корректный email");
       return;
@@ -38,11 +51,11 @@ export default function InviteCollaborator() {
         return;
       }
 
-      console.log(`Отправка запроса на приглашение коллаборатора: ${email}, роль: ${role}, для документа: ${id}`);
-      
+      console.log('Sending share request with data:', { document_id: Number(documentId), email });
+
       const response = await axios.post(
-        `http://127.0.0.1:8000/api/documents/${id}/invite/`,
-        { email, role },
+        `http://127.0.0.1:8000/api/share/`,
+        { document_id: Number(documentId), email },
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -50,43 +63,27 @@ export default function InviteCollaborator() {
           },
         }
       );
-      console.log("Invite response:", response.data);
-      showAlert("Успех", "Коллаборатор приглашён!", () => {
-        router.push({ pathname: "/edit", params: { id } });
+      
+      console.log('Share response:', response.data);
+      showAlert("Успех", "Ссылка для доступа к документу успешно создана и готова к отправке!", () => {
+        router.push("/documents");
       });
     } catch (error: any) {
-      console.error("Invite error:", error.response?.data || error.message);
-      
-      // Определяем конкретную ошибку на основе ответа сервера
-      let errorMessage = "Не удалось пригласить коллаборатора. Проверьте соединение.";
-      
+      console.error('Share error:', error.response?.data || error.message);
+      let errorMessage = "Не удалось поделиться документом.";
       if (error.response) {
-        const status = error.response.status;
-        const data = error.response.data;
-        
-        if (status === 404) {
-          if (data.error === "User not found") {
-            errorMessage = "Пользователь с таким email не найден в системе.";
-          } else if (data.error === "Document not found or you are not the owner") {
+        if (error.response.status === 404) {
+          if (error.response.data.error === "User not found") {
+            errorMessage = "Пользователь с таким email не найден.";
+          } else if (error.response.data.error === "Document not found or you are not the owner") {
             errorMessage = "Документ не найден или вы не являетесь его владельцем.";
           }
-        } else if (status === 400) {
-          if (data.email) {
-            errorMessage = `Ошибка email: ${data.email}`;
-          } else if (data.role) {
-            errorMessage = `Ошибка роли: ${data.role}`;
-          } else if (data.error === "User is already a collaborator") {
-            errorMessage = "Этот пользователь уже является коллаборатором документа.";
-          }
-        } else if (status === 401) {
+        } else if (error.response.status === 401) {
           errorMessage = "Ваша сессия истекла. Пожалуйста, войдите снова.";
-          showAlert("Ошибка", errorMessage, () => {
-            router.push("/login");
-          });
+          showAlert("Ошибка", errorMessage, () => router.push("/login"));
           return;
         }
       }
-      
       showAlert("Ошибка", errorMessage);
     }
   };
@@ -94,11 +91,11 @@ export default function InviteCollaborator() {
   return (
     <View style={styles.container}>
       <Header />
-      <Text style={styles.title}>Пригласить коллаборатора</Text>
+      <Text style={styles.title}>Поделиться документом</Text>
       
       <TextInput
         style={styles.input}
-        placeholder="Email коллаборатора"
+        placeholder="Email пользователя"
         placeholderTextColor="#9CA3AF"
         value={email}
         onChangeText={setEmail}
@@ -106,36 +103,14 @@ export default function InviteCollaborator() {
         autoCapitalize="none"
       />
 
-      <Text style={styles.label}>Роль</Text>
-      <View style={styles.radioContainer}>
-        <TouchableOpacity
-          style={styles.radioButton}
-          onPress={() => setRole("view")}
-        >
-          <View style={[styles.radioCircle, role === "view" && styles.radioSelected]}>
-            {role === "view" && <View style={styles.radioInnerCircle} />}
-          </View>
-          <Text style={styles.radioText}>Просмотр</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.radioButton}
-          onPress={() => setRole("edit")}
-        >
-          <View style={[styles.radioCircle, role === "edit" && styles.radioSelected]}>
-            {role === "edit" && <View style={styles.radioInnerCircle} />}
-          </View>
-          <Text style={styles.radioText}>Редактирование</Text>
-        </TouchableOpacity>
-      </View>
-
-      <TouchableOpacity style={styles.button} onPress={handleInvite}>
-        <Text style={styles.buttonText}>Пригласить</Text>
+      <TouchableOpacity style={styles.button} onPress={handleShare}>
+        <Text style={styles.buttonText}>Отправить ссылку</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={styles.link}
-        onPress={() => router.push({ pathname: "/edit", params: { id } })}
+        onPress={() => router.push("/documents")}
       >
-        <Text style={styles.linkText}>Назад к редактированию</Text>
+        <Text style={styles.linkText}>Назад к документам</Text>
       </TouchableOpacity>
     </View>
   );
@@ -159,43 +134,6 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 8,
     marginBottom: 16,
-  },
-  label: {
-    color: "#D1D5DB",
-    fontSize: 16,
-    marginBottom: 8,
-  },
-  radioContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 16,
-  },
-  radioButton: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  radioCircle: {
-    height: 20,
-    width: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: "#10B981",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 8,
-  },
-  radioSelected: {
-    backgroundColor: "#10B981",
-  },
-  radioInnerCircle: {
-    height: 10,
-    width: 10,
-    borderRadius: 5,
-    backgroundColor: "#FFFFFF",
-  },
-  radioText: {
-    color: "#D1D5DB",
-    fontSize: 14,
   },
   button: {
     backgroundColor: "#10B981",

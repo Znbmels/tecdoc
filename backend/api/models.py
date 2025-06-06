@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+import uuid
 
 class User(AbstractUser):
     email = models.EmailField(unique=True)
@@ -34,3 +35,13 @@ class DocumentCollaborator(models.Model):
 
     def __str__(self):
         return f"{self.user.email} - {self.document.title} ({self.role})"
+
+class ShareToken(models.Model):
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='share_tokens')
+    email = models.EmailField()
+    token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"Token for {self.document.title} to {self.email}"

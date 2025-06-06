@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, Document, DocumentCollaborator
+from .models import User, Document, DocumentCollaborator, ShareToken
 from django.contrib.auth.hashers import make_password
 
 class UserSerializer(serializers.ModelSerializer):
@@ -27,3 +27,12 @@ class DocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Document
         fields = ['id', 'title', 'content', 'owner', 'collaborators', 'created_at', 'updated_at']
+
+class ShareTokenSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ShareToken
+        fields = ['id', 'document', 'email', 'token', 'created_at', 'is_active']
+
+class ShareDocumentSerializer(serializers.Serializer):
+    document_id = serializers.IntegerField()
+    email = serializers.EmailField()

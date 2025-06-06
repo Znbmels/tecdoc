@@ -5,6 +5,8 @@ import * as SecureStore from "expo-secure-store";
 import { router } from "expo-router";
 import Header from "../components/Header";
 import { showAlert, showConfirm } from "../utils/alerts";
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 // Интерфейс для документа
 interface Document {
@@ -113,6 +115,74 @@ export default function Documents() {
     );
   };
 
+  const handleDownload = async (id: number, format: 'pdf' | 'docx') => {
+    try {
+      const token = await getToken();
+      if (!token) {
+        showAlert("Ошибка", "Не авторизован.");
+        return;
+      }
+
+      const url = `http://127.0.0.1:8000/api/documents/${id}/download/?format=${format}`;
+      console.log('Attempting to download from URL:', url);
+
+      if (Platform.OS === 'web') {
+        // Для веб-платформы используем fetch и blob API
+        const response = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        console.log('Download response status:', response.status);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Download failed with status:', response.status, 'Error:', errorText);
+          throw new Error(`Ошибка HTTP: ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const fileURL = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = fileURL;
+        link.setAttribute('download', `document-${id}.${format}`);
+        document.body.appendChild(link);
+        link.click();
+        link.parentNode?.removeChild(link);
+        showAlert("Успех", "Файл скачан!");
+      } else {
+        // Для мобильных платформ используем expo-file-system
+        const fileExtension = format;
+        const fileName = `document-${id}.${fileExtension}`;
+        const filePath = FileSystem.documentDirectory + fileName;
+
+        const response = await FileSystem.downloadAsync(
+          url,
+          filePath,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        console.log('Download response status:', response.status);
+        
+        if (response.status !== 200) {
+          console.error('Download failed with status:', response.status);
+          throw new Error('Не удалось скачать файл.');
+        }
+
+        await Sharing.shareAsync(filePath);
+      }
+
+    } catch (error) {
+      console.error('Download error:', error);
+      showAlert('Ошибка', 'Не удалось скачать документ.');
+    }
+  };
+
   const renderDocument = ({ item }: { item: Document }) => (
     <View style={styles.documentItem}>
       <TouchableOpacity onPress={() => router.push({ pathname: "/edit", params: { id: item.id } })}>
@@ -126,9 +196,25 @@ export default function Documents() {
           </Text>
         )}
       </TouchableOpacity>
-      <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(item.id)}>
-        <Text style={styles.deleteButtonText}>Удалить</Text>
-      </TouchableOpacity>
+      <View style={styles.actionsContainer}>
+        <TouchableOpacity
+          style={styles.shareButton}
+          onPress={() => router.push({ pathname: "/invite", params: { documentId: String(item.id) } })}
+        >
+          <Text style={styles.actionButtonText}>Поделиться</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(item.id)}>
+          <Text style={styles.actionButtonText}>Удалить</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={styles.downloadContainer}>
+        <TouchableOpacity style={styles.downloadButton} onPress={() => handleDownload(item.id, 'pdf')}>
+          <Text style={styles.actionButtonText}>Скачать PDF</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.downloadButton} onPress={() => handleDownload(item.id, 'docx')}>
+          <Text style={styles.actionButtonText}>Скачать DOCX</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -202,16 +288,46 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
+  actionsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 12,
+  },
+  shareButton: {
+    backgroundColor: "#3B82F6",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: "center",
+    flex: 1,
+    marginRight: 8,
+  },
   deleteButton: {
     backgroundColor: "#EF4444",
-    padding: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     borderRadius: 8,
-    marginTop: 8,
     alignItems: "center",
+    flex: 1,
+    marginLeft: 8,
   },
-  deleteButtonText: {
+  actionButtonText: {
     color: "#FFFFFF",
     fontWeight: "bold",
+  },
+  downloadContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  downloadButton: {
+    backgroundColor: '#1D4ED8',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    flex: 1,
+    marginHorizontal: 4,
   },
   emptyText: {
     color: "#9CA3AF",
