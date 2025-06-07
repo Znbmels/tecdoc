@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -14,7 +13,7 @@ SECRET_KEY = 'django-insecure-!xnn5pl0t$(rh%=kqe*7hp1(6jwkwvh_jd5%l+o!-9%-7y62xa
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '192.168.1.10']
 
 
 # Application definition
@@ -68,7 +67,16 @@ REST_FRAMEWORK = {
 # Настройки CORS
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8081",  # Порт Expo для фронтенда
+    "http://127.0.0.1:8081",  # Альтернативный localhost
+    "http://localhost:3000",  # Для веб-версии
+    "http://127.0.0.1:3000",  # Альтернативный localhost для веб
+    "http://localhost:19006", # Expo web dev server
+    "http://127.0.0.1:19006", # Expo web dev server
 ]
+
+# Дополнительные настройки CORS для разработки
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # Разрешаем все источники только в режиме отладки
 
 # Настройки SimpleJWT
 from datetime import timedelta

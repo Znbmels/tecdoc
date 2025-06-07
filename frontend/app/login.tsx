@@ -5,6 +5,7 @@ import * as SecureStore from "expo-secure-store";
 import { router } from "expo-router";
 import Header from "../components/Header";
 import { showAlert } from "../utils/alerts";
+import { API_BASE_URL } from "../utils/apiConfig";
 
 // Интерфейс для ответа от API
 interface TokenResponse {
@@ -12,9 +13,9 @@ interface TokenResponse {
   access: string;
 }
 
-// Константа для API URL (можно вынести в api.js)
+// Константа для API URL
 const API_URLS = {
-  TOKEN: "http://127.0.0.1:8000/api/token/",
+  TOKEN: `${API_BASE_URL}/api/token/`,
 };
 
 // Вспомогательная функция для сохранения токенов с учетом платформы

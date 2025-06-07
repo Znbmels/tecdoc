@@ -4,6 +4,7 @@ import axios from "axios";
 import { router } from "expo-router";
 import Header from "../components/Header";
 import { showAlert } from "../utils/alerts";
+import { API_BASE_URL } from "../utils/apiConfig";
 
 export default function Register() {
   const [email, setEmail] = useState("");
@@ -42,8 +43,8 @@ export default function Register() {
     
     try {
       setLoading(true);
-      console.log("Sending register request to http://127.0.0.1:8000/api/register/");
-      const response = await axios.post("http://127.0.0.1:8000/api/register/", {
+      console.log("Sending register request to", `${API_BASE_URL}/api/register/`);
+      const response = await axios.post(`${API_BASE_URL}/api/register/`, {
         email,
         username,
         password,

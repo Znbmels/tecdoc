@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { API_BASE_URL } from './apiConfig';
 
 /**
  * Вспомогательная функция для отладки текущего состояния приложения
@@ -22,7 +23,7 @@ export const debugAppState = async () => {
   
   // Собираем дополнительную информацию
   try {
-    const response = await fetch('http://127.0.0.1:8000/api/documents/');
+    const response = await fetch(`${API_BASE_URL}/api/documents/`);
     console.log('Статус запроса к API /documents/:', response.status);
     console.log('Заголовки ответа:', response.headers);
   } catch (error) {

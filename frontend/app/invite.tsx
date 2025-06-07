@@ -5,6 +5,7 @@ import * as SecureStore from "expo-secure-store";
 import { useLocalSearchParams, router } from "expo-router";
 import Header from "../components/Header";
 import { showAlert } from "../utils/alerts";
+import { API_BASE_URL } from "../utils/apiConfig";
 
 // Вспомогательная функция для получения токена с учетом платформы
 const getToken = async () => {
@@ -54,7 +55,7 @@ export default function ShareDocument() {
       console.log('Sending share request with data:', { document_id: Number(documentId), email });
 
       const response = await axios.post(
-        `http://127.0.0.1:8000/api/share/`,
+        `${API_BASE_URL}/api/share/`,
         { document_id: Number(documentId), email },
         {
           headers: {

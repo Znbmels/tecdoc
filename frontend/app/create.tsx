@@ -4,6 +4,7 @@ import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 import { router } from "expo-router";
 import Header from "../components/Header";
+import { API_BASE_URL } from "../utils/apiConfig";
 
 // Интерфейс для задачи
 interface TodoItem {
@@ -70,7 +71,7 @@ export default function CreateDocument() {
       }
 
       await axios.post(
-        "http://127.0.0.1:8000/api/documents/",
+        `${API_BASE_URL}/api/documents/`,
         { title, content },
         {
           headers: {

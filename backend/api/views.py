@@ -7,7 +7,7 @@ from django.core.mail import send_mail
 from django.conf import settings
 from .models import User, Document, DocumentCollaborator, ShareToken
 from .serializers import UserSerializer, DocumentSerializer, DocumentCollaboratorSerializer, ShareDocumentSerializer, ShareTokenSerializer
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from docx import Document as DocxDocument
@@ -60,7 +60,30 @@ class DocumentDetail(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        return (Document.objects.filter(owner=user) | Document.objects.filter(collaborators__user=user, collaborators__role='edit')).distinct()
+        return (Document.objects.filter(owner=user) | Document.objects.filter(collaborators__user=user)).distinct()
+
+    def update(self, request, *args, **kwargs):
+        document = self.get_object()
+        user = request.user
+
+        # Проверяем права на редактирование
+        is_owner = document.owner == user
+        is_edit_collaborator = document.collaborators.filter(user=user, role='edit').exists()
+
+        if not is_owner and not is_edit_collaborator:
+            return Response({"error": "You do not have permission to edit this document."}, status=status.HTTP_403_FORBIDDEN)
+
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        document = self.get_object()
+        user = request.user
+
+        # Только владелец может удалить документ
+        if document.owner != user:
+            return Response({"error": "Only the owner can delete this document."}, status=status.HTTP_403_FORBIDDEN)
+
+        return super().destroy(request, *args, **kwargs)
 
 # Приглашение collaborator
 @api_view(['POST'])
@@ -72,7 +95,11 @@ def invite_collaborator(request, id):
         email = request.data.get('email')
         role = request.data.get('role', 'view')
         user = User.objects.get(email=email)
-        collaborator, created = DocumentCollaborator.objects.get_or_create(user=user, document=document, role=role)
+        collaborator, created = DocumentCollaborator.objects.get_or_create(
+            user=user,
+            document=document,
+            defaults={'role': role}
+        )
         send_mail(
             'Invitation to collaborate',
             f'You have been invited to collaborate on document "{document.title}" with {role} access.',
@@ -104,18 +131,24 @@ def share_document(request):
         except User.DoesNotExist:
             return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        # Создаем коллаборатора с правами просмотра
+        collaborator, created = DocumentCollaborator.objects.get_or_create(
+            user=user_to_share_with,
+            document=document,
+            defaults={'role': 'view'}
+        )
+
         share_token = ShareToken.objects.create(document=document, email=email)
-        
-        # Here you would typically send an email with the share link
-        # For example:
-        # share_link = f"http://localhost:3000/shared-document/{share_token.token}"
-        # send_mail(
-        #     'Document Shared with You',
-        #     f'You can view the document "{document.title}" using this link: {share_link}',
-        #     settings.EMAIL_HOST_USER,
-        #     [email],
-        #     fail_silently=False,
-        # )
+
+        # Отправляем email уведомление
+        share_link = f"http://localhost:8081/shared-document/{share_token.token}"
+        send_mail(
+            'Document Shared with You',
+            f'You have been given access to the document "{document.title}". You can view it in your documents list or using this link: {share_link}',
+            settings.EMAIL_HOST_USER,
+            [email],
+            fail_silently=False,
+        )
         
         return Response({
             "message": "Share link created successfully.", 
@@ -134,23 +167,48 @@ def retrieve_shared_document(request, token):
     except ShareToken.DoesNotExist:
         return Response({"error": "Invalid or expired token"}, status=status.HTTP_404_NOT_FOUND)
 
-@api_view(['GET'])
-@permission_classes([permissions.IsAuthenticated])
 def download_document(request, pk):
-    print(f"Download request received for document {pk} in format {request.query_params.get('format', 'pdf')}")
+    print(f"=== DOWNLOAD REQUEST START ===")
+    print(f"Document ID: {pk}")
+    print(f"Format: {request.GET.get('format', 'pdf')}")
+    print(f"User: {request.user}")
+    print(f"Request path: {request.path}")
+    print(f"Authorization header: {request.META.get('HTTP_AUTHORIZATION', 'None')}")
+
+    # Проверка аутентификации JWT
+    from rest_framework_simplejwt.authentication import JWTAuthentication
+    from rest_framework.request import Request
+
+    # Создаем DRF Request для аутентификации
+    drf_request = Request(request)
+    jwt_auth = JWTAuthentication()
+
+    try:
+        user_auth_tuple = jwt_auth.authenticate(drf_request)
+        if user_auth_tuple is None:
+            return JsonResponse({"error": "Authentication required"}, status=401)
+
+        user, token = user_auth_tuple
+        print(f"Authenticated user: {user}")
+    except Exception as e:
+        print(f"Authentication error: {e}")
+        return JsonResponse({"error": "Invalid authentication"}, status=401)
+
     try:
         document = Document.objects.get(pk=pk)
         print(f"Document found: {document.title}")
+        print(f"Document owner: {document.owner}")
         
         # Check if the user is the owner or a collaborator
-        is_owner = document.owner == request.user
-        is_collaborator = document.collaborators.filter(user=request.user).exists()
+        is_owner = document.owner == user
+        is_collaborator = document.collaborators.filter(user=user).exists()
         print(f"User permissions: is_owner={is_owner}, is_collaborator={is_collaborator}")
-        
-        if not is_owner and not is_collaborator:
-            return Response({"error": "You do not have permission to access this document."}, status=status.HTTP_403_FORBIDDEN)
 
-        file_format = request.query_params.get('format', 'pdf').lower()
+        if not is_owner and not is_collaborator:
+            print("User does not have permission to access this document.")
+            return JsonResponse({"error": "You do not have permission to access this document."}, status=403)
+
+        file_format = request.GET.get('format', 'pdf').lower()
         print(f"Generating {file_format} file for document: {document.title}")
 
         if file_format == 'pdf':
@@ -188,11 +246,11 @@ def download_document(request, pk):
 
         else:
             print(f"Unsupported format: {file_format}")
-            return Response({"error": f"Unsupported format: {file_format}. Please choose 'pdf' or 'docx'."}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({"error": f"Unsupported format: {file_format}. Please choose 'pdf' or 'docx'."}, status=400)
 
     except Document.DoesNotExist:
         print(f"Document with id {pk} not found")
-        return Response({"error": "Document not found"}, status=status.HTTP_404_NOT_FOUND)
+        return JsonResponse({"error": "Document not found"}, status=404)
     except Exception as e:
         print(f"Error while generating document: {str(e)}")
-        return Response({"error": f"Error: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JsonResponse({"error": f"Error: {str(e)}"}, status=500)

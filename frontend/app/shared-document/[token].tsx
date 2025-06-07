@@ -4,6 +4,7 @@ import axios from "axios";
 import { useLocalSearchParams } from "expo-router";
 import Header from "../../components/Header";
 import { showAlert } from "../../utils/alerts";
+import { API_BASE_URL } from "../../utils/apiConfig";
 
 interface Document {
   id: number;
@@ -26,7 +27,7 @@ export default function SharedDocument() {
       }
 
       try {
-        const response = await axios.get(`http://127.0.0.1:8000/api/shared-document/${token}/`);
+        const response = await axios.get(`${API_BASE_URL}/api/shared-document/${token}/`);
         setDocument(response.data);
       } catch (err: any) {
         setError(err.response?.data?.error || "Не удалось загрузить документ.");

@@ -6,6 +6,7 @@ import { useLocalSearchParams, router } from "expo-router";
 import Header from "../components/Header";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
+import { API_BASE_URL } from "../utils/apiConfig";
 
 // Интерфейсы для типизации
 interface Collaborator {
@@ -48,7 +49,7 @@ export default function EditDocument() {
           return;
         }
 
-        const response = await axios.get<DocumentData>(`http://127.0.0.1:8000/api/documents/${id}/`, {
+        const response = await axios.get<DocumentData>(`${API_BASE_URL}/api/documents/${id}/`, {
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
@@ -77,7 +78,7 @@ export default function EditDocument() {
       }
 
       await axios.put(
-        `http://127.0.0.1:8000/api/documents/${id}/`,
+        `${API_BASE_URL}/api/documents/${id}/`,
         { title, content },
         {
           headers: {

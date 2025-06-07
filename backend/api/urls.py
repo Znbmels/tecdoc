@@ -17,8 +17,8 @@ urlpatterns = [
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('documents/', DocumentListCreate.as_view(), name='document-list'),
     path('documents/<int:pk>/download/', download_document, name='download-document'),
-    path('documents/<int:pk>/', DocumentDetail.as_view(), name='document-detail'),
     path('documents/<int:id>/invite/', invite_collaborator, name='invite-collaborator'),
+    path('documents/<int:pk>/', DocumentDetail.as_view(), name='document-detail'),
     path('share/', share_document, name='share-document'),
     path('shared-document/<uuid:token>/', retrieve_shared_document, name='retrieve-shared-document'),
 ]

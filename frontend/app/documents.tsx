@@ -7,6 +7,7 @@ import Header from "../components/Header";
 import { showAlert, showConfirm } from "../utils/alerts";
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { API_BASE_URL } from "../utils/apiConfig";
 
 // Интерфейс для документа
 interface Document {
@@ -56,7 +57,7 @@ export default function Documents() {
 
         console.log("Fetching documents with token:", token.substring(0, 10) + "...");
         
-        const response = await axios.get<Document[]>("http://127.0.0.1:8000/api/documents/", {
+        const response = await axios.get<Document[]>(`${API_BASE_URL}/api/documents/`, {
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
@@ -99,7 +100,7 @@ export default function Documents() {
             return;
           }
 
-          await axios.delete(`http://127.0.0.1:8000/api/documents/${id}/`, {
+          await axios.delete(`${API_BASE_URL}/api/documents/${id}/`, {
             headers: {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
@@ -123,7 +124,7 @@ export default function Documents() {
         return;
       }
 
-      const url = `http://127.0.0.1:8000/api/documents/${id}/download/?format=${format}`;
+      const url = `${API_BASE_URL}/api/documents/${id}/download/?format=${format}`;
       console.log('Attempting to download from URL:', url);
 
       if (Platform.OS === 'web') {
